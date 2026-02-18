@@ -201,7 +201,7 @@ export const handleSessionCommand: CommandHandler = async (params, allowTextComm
   }
   if (!params.command.isAuthorizedSender) {
     logVerbose(
-      \Ignoring /session from unauthorized sender: \,
+      `Ignoring /session from unauthorized sender: ${params.command.senderId || "<unknown>"}`,
     );
     return { shouldContinue: false };
   }
@@ -214,8 +214,8 @@ export const handleSessionCommand: CommandHandler = async (params, allowTextComm
   }
   return {
     shouldContinue: false,
-    reply: { text: \Session switch requested to: \
-(Note: Session switching via text command requires gateway support)\ },
+      reply: { text: `Session switch requested to: ${args}
+(Note: Session switching via text command requires gateway support)` },
   };
 };
 
@@ -229,7 +229,7 @@ export const handleSessionsCommand: CommandHandler = async (params, allowTextCom
   }
   if (!params.command.isAuthorizedSender) {
     logVerbose(
-      \Ignoring /sessions from unauthorized sender: \,
+      `Ignoring /sessions from unauthorized sender: ${params.command.senderId || "<unknown>"}`,
     );
     return { shouldContinue: false };
   }
@@ -242,8 +242,8 @@ export const handleSessionsCommand: CommandHandler = async (params, allowTextCom
   }
   return {
     shouldContinue: false,
-    reply: { text: \Session switch requested to: \
-(Note: Session switching via text command requires gateway support)\ },
+      reply: { text: `Session switch requested to: ${args}
+(Note: Session switching via text command requires gateway support)` },
   };
 };
 

@@ -231,3 +231,129 @@
   - `node --import tsx scripts/release-check.ts`
   - `pnpm release:check`
   - `pnpm test:install:smoke` or `OPENCLAW_INSTALL_SMOKE_SKIP_NONROOT=1 pnpm test:install:smoke` for non-root smoke path.
+
+## Multi-Round Effort Strategies
+
+**Autonomous execution mode:** For complex tasks requiring multiple steps, iterations, or exploration, follow these patterns instead of asking for permission at each stage.
+
+### Task Decomposition
+
+When facing complex work:
+1. **Analyze scope**: Understand the full breadth of the task
+2. **Identify subtasks**: Break into logical chunks with clear boundaries
+3. **Detect dependencies**: Determine which subtasks must complete first
+4. **Plan incrementally**: Start with highest-impact, lowest-risk items
+5. **Execute iteratively**: Complete each subtask, verify, then proceed
+
+**Example workflow:**
+```
+Goal: Refactor authentication system
+
+Plan (internal):
+1. Map current auth flow ¡ú read code, trace paths
+2. Identify pain points ¡ú check tests, logs, error handling
+3. Design new structure ¡ú consider patterns, maintain compatibility
+4. Implement changes ¡ú incrementally, with tests
+5. Verify and document ¡ú run tests, update docs
+
+Execute autonomously through all steps, reporting progress after each major milestone.
+```
+
+### Exploration Strategies
+
+For unknown codebase areas:
+- **Broad-to-narrow**: Start with file structure, then drill into specific modules
+- **Trace dependencies**: Follow import chains to understand relationships
+- **Read tests first**: Tests reveal expected behavior and edge cases
+- **Check similar patterns**: Look for existing implementations to guide approach
+- **Document findings**: Update `LEARNING.md` with discoveries for future use
+
+### Error Recovery Pattern
+
+When things break:
+1. **Don't stop**: Pause, diagnose, but don't abandon the task
+2. **Read carefully**: Error messages usually contain the solution
+3. **Check logs**: `tail -n 50 /tmp/openclaw-gateway.log` or similar
+4. **Isolate the problem**: Minimal reproduction, hypothesis testing
+5. **Fix iteratively**: Small changes, verify each, rollback if needed
+6. **Learn from it**: Document the root cause in `LEARNING.md`
+
+### Progress Communication
+
+For multi-step work, provide brief status updates:
+- **Start**: "Refactoring auth system (5 steps) ¡ª starting with flow analysis"
+- **Mid-progress**: "? Mapped flow, ?? Identifying pain points"
+- **Milestone**: "? Pain points identified: weak token validation, slow session lookup"
+- **Completion**: "? Auth refactor complete ¡ª all tests passing, docs updated"
+
+Keep updates concise (1-2 lines). Show what's done, what's next, and any blockers.
+
+### Autonomous Decision Points
+
+**Make these decisions yourself:**
+- Which files to read or modify to understand a system
+- Which tools to use for a task (`rg` vs `grep`, `bun` vs `node`, etc.)
+- Order of operations when dependencies are clear
+- When to pivot approaches if current one isn't working
+- Whether to create helper functions vs inline code
+- How to structure code following existing patterns
+
+**Ask for input on:**
+- Multiple valid approaches with different trade-offs
+- Changes affecting external APIs or user-facing behavior
+- Architectural decisions that impact future development
+- Preference-sensitive choices (naming, style, organization)
+
+### Context Maintenance
+
+For long-running tasks:
+- Keep mental model of overall goal and progress
+- Reference earlier decisions and their rationale
+- Maintain continuity across interactions
+- If interrupted, quickly recap status and resume
+- Update `LEARNING.md` with discoveries during the task
+
+### Verification Checkpoints
+
+After significant changes:
+- Run relevant tests (`pnpm test <pattern>`)
+- Check type safety (`pnpm tsgo`)
+- Verify linting (`pnpm check`)
+- Test manually if needed
+- Update documentation if behavior changed
+
+Don't ask permission to verify ¡ª just do it.
+
+### Completion Criteria
+
+Consider the task complete when:
+- All subtasks are finished
+- Tests pass
+- Documentation updated
+- No obvious follow-up work remains
+- You can explain what changed and why
+
+If scope creep appears, note it and either handle it or flag it for the user.
+
+---
+
+## Autonomy Reference
+
+See `AUTONOMY.md` for:
+- Decision framework (when to act vs. ask)
+- Error recovery protocols
+- Self-improvement mechanisms
+- Multi-round effort best practices
+
+See `LEARNING.md` for:
+- Patterns that work in this codebase
+- Anti-patterns to avoid
+- Recent insights and ideas
+
+See `HEARTBEAT.md` for:
+- Periodic self-improvement tasks
+- Capability maintenance routines
+
+---
+
+_Remember: You have agency. Use it to complete multi-round efforts autonomously._
