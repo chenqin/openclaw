@@ -1,9 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 
-const agentSpy = vi.fn(async () => ({ runId: "run-main", status: "ok" }));
-const sessionsDeleteSpy = vi.fn();
-const readLatestAssistantReplyMock = vi.fn(async () => "raw subagent reply");
+type AgentCallRequest = { method?: string; params?: Record<string, unknown> };
+type RequesterResolution = {
+  requesterSessionKey: string;
+  requesterOrigin?: Record<string, unknown>;
+} | null;
+
+const agentSpy = vi.fn(async (_req: AgentCallRequest) => ({ runId: "run-main", status: "ok" }));
+const sessionsDeleteSpy = vi.fn((_req: AgentCallRequest) => undefined);
+const readLatestAssistantReplyMock = vi.fn(
+  async (_sessionKey?: string): Promise<string | undefined> => "raw subagent reply",
+);
 const embeddedRunMock = {
   isEmbeddedPiRunActive: vi.fn(() => false),
   isEmbeddedPiRunStreaming: vi.fn(() => false),
@@ -12,9 +20,10 @@ const embeddedRunMock = {
 };
 const subagentRegistryMock = {
   isSubagentSessionRunActive: vi.fn(() => true),
-  countActiveDescendantRuns: vi.fn(() => 0),
-  resolveRequesterForChildSession: vi.fn(() => null),
+  countActiveDescendantRuns: vi.fn((_sessionKey: string) => 0),
+  resolveRequesterForChildSession: vi.fn((_sessionKey: string): RequesterResolution => null),
 };
+const chatHistoryMock = vi.fn(async (_sessionKey: string) => ({ messages: [] as Array<unknown> }));
 let sessionStore: Record<string, Record<string, unknown>> = {};
 let configOverride: ReturnType<(typeof import("../config/config.js"))["loadConfig"]> = {
   session: {
@@ -57,6 +66,9 @@ vi.mock("../gateway/call.js", () => ({
     }
     if (typed.method === "agent.wait") {
       return { status: "error", startedAt: 10, endedAt: 20, error: "boom" };
+    }
+    if (typed.method === "chat.history") {
+      return await chatHistoryMock(typed.params?.sessionKey);
     }
     if (typed.method === "sessions.patch") {
       return {};
@@ -106,6 +118,7 @@ describe("subagent announce formatting", () => {
     subagentRegistryMock.countActiveDescendantRuns.mockReset().mockReturnValue(0);
     subagentRegistryMock.resolveRequesterForChildSession.mockReset().mockReturnValue(null);
     readLatestAssistantReplyMock.mockReset().mockResolvedValue("raw subagent reply");
+    chatHistoryMock.mockReset().mockResolvedValue({ messages: [] });
     sessionStore = {};
     configOverride = {
       session: {
@@ -187,6 +200,96 @@ describe("subagent announce formatting", () => {
     expect(call?.params?.idempotencyKey).toBe(
       "announce:v1:agent:main:subagent:worker:run-direct-idem",
     );
+  });
+
+  it("falls back to latest toolResult output when assistant reply is empty", async () => {
+    const { runSubagentAnnounceFlow } = await import("./subagent-announce.js");
+    chatHistoryMock.mockResolvedValueOnce({
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "" }],
+        },
+        {
+          role: "toolResult",
+          content: [{ type: "text", text: "tool output line 1" }],
+        },
+      ],
+    });
+    readLatestAssistantReplyMock.mockResolvedValue("");
+
+    await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:worker",
+      childRunId: "run-tool-fallback",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      ...defaultOutcomeAnnounce,
+      waitForCompletion: false,
+    });
+
+    const call = agentSpy.mock.calls[0]?.[0] as { params?: { message?: string } };
+    const msg = call?.params?.message as string;
+    expect(msg).toContain("tool output line 1");
+  });
+
+  it("uses latest assistant text when it appears after a tool output", async () => {
+    const { runSubagentAnnounceFlow } = await import("./subagent-announce.js");
+    chatHistoryMock.mockResolvedValueOnce({
+      messages: [
+        {
+          role: "tool",
+          content: [{ type: "text", text: "tool output line" }],
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "assistant final line" }],
+        },
+      ],
+    });
+    readLatestAssistantReplyMock.mockResolvedValue("");
+
+    await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:worker",
+      childRunId: "run-latest-assistant",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      ...defaultOutcomeAnnounce,
+      waitForCompletion: false,
+    });
+
+    const call = agentSpy.mock.calls[0]?.[0] as { params?: { message?: string } };
+    const msg = call?.params?.message as string;
+    expect(msg).toContain("assistant final line");
+  });
+
+  it("falls back to latest tool output when assistant reply is empty", async () => {
+    const { runSubagentAnnounceFlow } = await import("./subagent-announce.js");
+    chatHistoryMock.mockResolvedValueOnce({
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "" }],
+        },
+        {
+          role: "tool",
+          content: [{ type: "text", text: "tool output line 2" }],
+        },
+      ],
+    });
+    readLatestAssistantReplyMock.mockResolvedValue("");
+
+    await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:worker",
+      childRunId: "run-tool-fallback-2",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      ...defaultOutcomeAnnounce,
+      waitForCompletion: false,
+    });
+
+    const call = agentSpy.mock.calls[0]?.[0] as { params?: { message?: string } };
+    const msg = call?.params?.message as string;
+    expect(msg).toContain("tool output line 2");
   });
 
   it("keeps full findings and includes compact stats", async () => {
@@ -827,6 +930,50 @@ describe("subagent announce formatting", () => {
     const call = agentSpy.mock.calls[0]?.[0] as { params?: Record<string, unknown> };
     expect(call?.params?.sessionKey).toBe("agent:main:main");
     // deliver=true because Jaris is main (user-facing)
+    expect(call?.params?.deliver).toBe(true);
+    expect(call?.params?.channel).toBe("discord");
+  });
+
+  it("falls back when parent session is missing a sessionId (#18037)", async () => {
+    const { runSubagentAnnounceFlow } = await import("./subagent-announce.js");
+    embeddedRunMock.isEmbeddedPiRunActive.mockReturnValue(false);
+    embeddedRunMock.isEmbeddedPiRunStreaming.mockReturnValue(false);
+
+    subagentRegistryMock.isSubagentSessionRunActive.mockReturnValue(false);
+    sessionStore = {
+      "agent:main:subagent:newton": {
+        sessionId: " ",
+        inputTokens: 100,
+        outputTokens: 50,
+      },
+      "agent:main:subagent:newton:subagent:birdie": {
+        sessionId: "birdie-session-id",
+        inputTokens: 20,
+        outputTokens: 10,
+      },
+    };
+    subagentRegistryMock.resolveRequesterForChildSession.mockReturnValue({
+      requesterSessionKey: "agent:main:main",
+      requesterOrigin: { channel: "discord" },
+    });
+
+    const didAnnounce = await runSubagentAnnounceFlow({
+      childSessionKey: "agent:main:subagent:newton:subagent:birdie",
+      childRunId: "run-birdie-empty-parent",
+      requesterSessionKey: "agent:main:subagent:newton",
+      requesterDisplayKey: "subagent:newton",
+      task: "QA task",
+      timeoutMs: 1000,
+      cleanup: "keep",
+      waitForCompletion: false,
+      startedAt: 10,
+      endedAt: 20,
+      outcome: { status: "ok" },
+    });
+
+    expect(didAnnounce).toBe(true);
+    const call = agentSpy.mock.calls[0]?.[0] as { params?: Record<string, unknown> };
+    expect(call?.params?.sessionKey).toBe("agent:main:main");
     expect(call?.params?.deliver).toBe(true);
     expect(call?.params?.channel).toBe("discord");
   });
